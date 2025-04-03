@@ -1,47 +1,161 @@
-{
-    "inbounds": [
-        {
-            "listen": "127.0.0.1",
-            "port": 10808,
-            "protocol": "socks",
-            "settings": {
-                "udp": true
-            }
-        }
-    ],
-    "log": {
-        "loglevel": "error"
-    },
-    "outbounds": [
-        {
-            "protocol": "vless",
-            "settings": {
-                "vnext": [
-                    {
-                        "address": "171.22.120.33",
-                        "port": 443,
-                        "users": [
-                            {
-                                "encryption": "none",
-                                "flow": "xtls-rprx-vision",
-                                "id": "00a62dca-a15f-45a8-8364-8d1fc33cffdc"
-                            }
-                        ]
-                    }
-                ]
-            },
-            "streamSettings": {
-                "network": "tcp",
-                "realitySettings": {
-                    "fingerprint": "chrome",
-                    "publicKey": "VUQuSeoRLpZBLJM9kLrjnqplHSL9AI76yW5ica31D0I",
-                    "serverName": "www.googletagmanager.com",
-                    "shortId": "5b8f71588da1e8ea",
-                    "spiderX": ""
-                },
-                "security": "reality"
-            }
-        }
-    ]
-}
+import pygame
+import random
 
+pygame.init()
+
+# Константы
+WIDTH, HEIGHT = 800, 400
+GROUND_Y = HEIGHT - 40
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+
+# Окно
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Ghost Runner")
+
+# Загрузка спрайтов
+idle_sprite = pygame.image.load("idle.png")
+jump_sprite = pygame.image.load("jump.png")
+shoot_sprite = pygame.image.load("shoot.png")
+
+run_sprites = [
+    pygame.image.load("run1.png"),
+    pygame.image.load("run2.png"),
+    pygame.image.load("run3.png"),
+    pygame.image.load("run4.png")
+]
+
+ghost_img = pygame.image.load("ghost.png")
+bullet_img = pygame.image.load("bullet.png")
+background_img = pygame.image.load("background.png")
+
+# Масштабирование
+idle_sprite = pygame.transform.scale(idle_sprite, (40, 40))
+jump_sprite = pygame.transform.scale(jump_sprite, (40, 40))
+shoot_sprite = pygame.transform.scale(shoot_sprite, (40, 40))
+run_sprites = [pygame.transform.scale(img, (40, 40)) for img in run_sprites]
+ghost_img = pygame.transform.scale(ghost_img, (40, 40))
+bullet_img = pygame.transform.scale(bullet_img, (10, 10))
+
+# Звуки
+pygame.mixer.music.load("music.wav")
+jump_sound = pygame.mixer.Sound("jump.wav")
+shoot_sound = pygame.mixer.Sound("shoot.wav")
+hit_sound = pygame.mixer.Sound("hit.wav")
+
+pygame.mixer.music.set_volume(0.5)
+pygame.mixer.music.play(-1)
+
+# Игровые переменные
+clock = pygame.time.Clock()
+player_x, player_y = 50, GROUND_Y - 40
+player_vel_y = 0
+gravity = 1
+is_jumping = False
+is_shooting = False
+bullets = []
+ghosts = []
+score = 0
+ammo = 5
+speed = 5
+run_frame = 0
+frame_counter = 0
+shoot_timer = 0
+
+ANIM_SPEED = 5
+pixel_font = pygame.font.Font("pixel_font.ttf", 24)
+
+def spawn_ghost():
+    ghost_x = WIDTH + random.randint(50, 300)
+    ghosts.append(pygame.Rect(ghost_x, GROUND_Y - 40, 40, 40))
+
+def update_ghosts():
+    global score
+    for ghost in ghosts[:]:
+        ghost.x -= speed
+        if ghost.x < -40:
+            ghosts.remove(ghost)
+            score += 1
+
+def update_bullets():
+    global ammo
+    for bullet in bullets[:]:
+        bullet.x += 10
+        if bullet.x > WIDTH:
+            bullets.remove(bullet)
+        for ghost in ghosts[:]:
+            if bullet.colliderect(ghost):
+                ghosts.remove(ghost)
+                bullets.remove(bullet)
+                hit_sound.play()
+                score += 5
+                ammo += 1
+
+running = True
+while running:
+    screen.blit(background_img, (0, 0))
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE and not is_jumping:
+                player_vel_y = -15
+                is_jumping = True
+                jump_sound.play()
+            if event.key == pygame.K_f and ammo > 0:
+                bullets.append(pygame.Rect(player_x + 30, player_y + 20, 10, 5))
+                ammo -= 1
+                shoot_sound.play()
+                is_shooting = True
+                shoot_timer = 10
+
+    # Физика прыжка
+    player_y += player_vel_y
+    player_vel_y += gravity
+    if player_y >= GROUND_Y - 40:
+        player_y = GROUND_Y - 40
+        is_jumping = False
+
+    # Генерация привидений
+    if random.randint(1, 100) > 98:
+        spawn_ghost()
+
+    # Обновление объектов
+    update_ghosts()
+    update_bullets()
+
+    # Анимация
+    frame_counter += 1
+    if frame_counter >= ANIM_SPEED:
+        frame_counter = 0
+        run_frame = (run_frame + 1) % len(run_sprites)
+
+    # Выбор спрайта
+    if is_shooting:
+        current_sprite = shoot_sprite
+        shoot_timer -= 1
+        if shoot_timer <= 0:
+            is_shooting = False
+    elif is_jumping:
+        current_sprite = jump_sprite
+    elif not is_jumping and any(pygame.key.get_pressed()[key] for key in (pygame.K_LEFT, pygame.K_RIGHT)):
+        current_sprite = run_sprites[run_frame]
+    else:
+        current_sprite = idle_sprite
+
+    # Отрисовка объектов
+    screen.blit(current_sprite, (player_x, player_y))
+    for ghost in ghosts:
+        screen.blit(ghost_img, (ghost.x, ghost.y))
+    for bullet in bullets:
+        screen.blit(bullet_img, (bullet.x, bullet.y))
+
+    # Отображение счета
+    score_text = pixel_font.render(f"Score: {score} Ammo: {ammo}", True, BLACK)
+    screen.blit(score_text, (10, 10))
+
+    pygame.display.flip()
+    clock.tick(30)
+
+pygame.quit()
